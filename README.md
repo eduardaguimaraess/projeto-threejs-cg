@@ -8,7 +8,6 @@ Trabalho desenvolvido para a disciplina de Computação Gráfica, Realidade Virt
 - Eduarda Guimarães Monteiro
 - Eduardo Vieira Torres dos Santos
 - Gabriel Hawai Coelho Moreira da Silva
-- Heitor Poubel Barcellos Fialho
 - Pedro Henrique De Oliveira Cadiz
 - Thainara de Fátima Jacob Vieira
 
