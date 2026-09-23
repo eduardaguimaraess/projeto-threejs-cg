@@ -36,7 +36,7 @@ A interação do usuário ocorre de três formas: controle da câmera por meio d
 - Movimentação do braço robótico Canadarm2 (Math.sin)
 - Flutuação do satélite (Math.sin)
 
-**Interação por teclado:** movimentação do satélite pelas teclas WASD e alternância de câmera entre a ISS e o satélite pela tecla C.
+**Interação por teclado:** movimentação do satélite pelas teclas WASD e alternância de câmera entre a ISS e o satélite pela tecla C
 
 **Interação por mouse:** utilização de Raycaster para seleção dos módulos da estação, com resposta visual e atualização de informações na interface
 
