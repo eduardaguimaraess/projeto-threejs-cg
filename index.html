@@ -1,85 +1,671 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Projeto ISS 3D - Three.js</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISS 3D — Computação Gráfica</title>
 
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-        }
-    </style>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    canvas { display: block; }
 
-    <!-- Importação do Three.js via módulo JS -->
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js"
-        }
+    /* Painel de informação (HUD) sobreposto ao canvas */
+    #info {
+      position: fixed; top: 14px; left: 14px; max-width: 350px;
+      padding: 12px 16px; box-sizing: border-box;
+      background: rgba(8, 14, 30, 0.74);
+      border: 1px solid rgba(160, 190, 255, 0.25);
+      border-radius: 6px;
+      color: #dbe6ff;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      pointer-events: none; /* o painel não "rouba" cliques do canvas */
     }
-    </script>
+    #info h1 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+    #info p  { margin: 0 0 12px; color: #9db2dd; line-height: 1.6; }
+    #camera-info { margin-bottom: 8px; font-weight: 600; color: #ff9a1f; font-size: 15px; }
+    #modulo-selecionado { font-weight: 600; color: #fff; }
+    #modulo-agencia     { font-weight: 600; min-height: 1.5em; }
+    #modulo-descricao   { color: #b9c7e6; font-size: 13px; min-height: 2.6em; }
+    #legenda { margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid rgba(160,190,255,.2);
+               list-style: none; font-size: 12px; color: #9db2dd; }
+    .tecla { background: #333; padding: 2px 6px; border-radius: 4px; color: #fff; font-weight: bold; border: 1px solid #555;}
+  </style>
+
+  <!-- IMPORTMAP: o browser resolve "three" e "three/addons/" sem bundler -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 
 <body>
+  <!-- Interface textual atualizada pelo Raycaster e pela troca de Câmeras -->
+  <div id="info">
+    <h1>Estação Espacial Internacional</h1>
+    <p>
+      Mouse: orbitar · Scroll: zoom · Clique: inspecionar<br>
+      <span class="tecla">WASD</span> Pilotar Satélite · <span class="tecla">C</span> Trocar Câmera
+    </p>
+    <div id="camera-info">Câmera Focada: <span id="camera-alvo" style="color: #fff;">Satélite</span></div>
+    <div>Selecionado: <span id="modulo-selecionado">nenhum</span></div>
+    <div id="modulo-agencia"></div>
+    <div id="modulo-descricao"></div>
+    <ul id="legenda"></ul>
+  </div>
 
-<script type="module">
-    import * as THREE from 'three';
+  <script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    // =========================================
-    // 1. SCENE & RENDERER
-    // =========================================
+/* ==================================================================
+ * 1. ESTRUTURA BÁSICA E RENDERER
+ * ================================================================== */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
 
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 6000);
+camera.position.set(95, 60, 150);
 
-    // =========================================
-    // 2. CAMERA
-    // =========================================
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-
-    // =========================================
-    // 3. ILUMINAÇÃO
-    // =========================================
-
-
-    // =========================================
-    // 4. TEXTURAS
-    // =========================================
-
-
-    // =========================================
-    // 5. OBJETOS 3D (ESTAÇÃO ESPACIAL / ISS)
-    // =========================================
-
-
-    // =========================================
-    // 6. OBJETO CONTROLÁVEL
-    // =========================================
-
-
-    // =========================================
-    // 7. INTERAÇÃO POR TECLADO (WASD)
-    // =========================================
-
-
-    // =========================================
-    // 8. INTERAÇÃO COM MOUSE (RAYCASTER)
-    // =========================================
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;   
+controls.minDistance = 25;       
+controls.maxDistance = 1500; 
 
 
-    // =========================================
-    // 9. RENDER LOOP & ANIMAÇÕES
-    // =========================================
+/* ==================================================================
+ * 2. ILUMINAÇÃO
+ * ================================================================== */
+const luzAmbiente = new THREE.AmbientLight(0xffffff, 0.35);
+scene.add(luzAmbiente);
+
+const sol = new THREE.DirectionalLight(0xfff4e0, 3.0);
+sol.position.set(50, 30, 40);
+scene.add(sol);
 
 
-    // =========================================
-    // 10. RESPONSIVIDADE (RESIZE)
-    // =========================================
+/* ==================================================================
+ * 3. TEXTURAS (Geradas proceduralmente para funcionar offline)
+ * ================================================================== */
+function gerarImagemCasco(tam = 256) {
+  const c = document.createElement('canvas');
+  c.width = c.height = tam;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, tam);          
+  grad.addColorStop(0, '#d8dce4');
+  grad.addColorStop(1, '#9ba1ad');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, tam, tam);
 
-</script>
+  for (let i = 0; i < 1800; i++) {                            
+    const v = 110 + Math.floor(Math.random() * 120);
+    g.fillStyle = `rgba(${v},${v},${v},0.18)`;
+    g.fillRect(Math.random() * tam, Math.random() * tam, 2, 2);
+  }
 
+  g.strokeStyle = '#4b515d';                                  
+  g.lineWidth = 3;
+  g.strokeRect(1.5, 1.5, tam - 3, tam - 3);
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(tam / 2, 0);  g.lineTo(tam / 2, tam);
+  g.moveTo(0, tam / 2);  g.lineTo(tam, tam / 2);
+  g.stroke();
+
+  g.fillStyle = '#3a3f49';                                    
+  for (const x of [12, tam / 2 - 12, tam / 2 + 12, tam - 12]) {
+    for (const y of [12, tam / 2 - 12, tam / 2 + 12, tam - 12]) {
+      g.beginPath(); g.arc(x, y, 2.5, 0, Math.PI * 2); g.fill();
+    }
+  }
+  return c.toDataURL('image/png');   
+}
+
+function gerarImagemPainelSolar(tam = 256) {
+  const c = document.createElement('canvas');
+  c.width = c.height = tam;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, tam, tam);        
+  grad.addColorStop(0, '#0a1a55');
+  grad.addColorStop(1, '#23409f');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, tam, tam);
+
+  const n = 4, passo = tam / n;                               
+  g.strokeStyle = '#9db8ff';
+  g.lineWidth = 2;
+  for (let i = 0; i <= n; i++) {
+    g.beginPath(); g.moveTo(i * passo, 0); g.lineTo(i * passo, tam); g.stroke();
+    g.beginPath(); g.moveTo(0, i * passo); g.lineTo(tam, i * passo); g.stroke();
+  }
+  g.strokeStyle = 'rgba(200,215,255,0.35)';                   
+  g.lineWidth = 1;
+  for (let i = 0; i < n; i++) {
+    g.beginPath();
+    g.moveTo(i * passo + passo / 2, 0);
+    g.lineTo(i * passo + passo / 2, tam);
+    g.stroke();
+  }
+  return c.toDataURL('image/png');
+}
+
+function gerarImagemRadiador(tam = 256) {
+  const c = document.createElement('canvas');
+  c.width = c.height = tam;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f3efe6';                                    
+  g.fillRect(0, 0, tam, tam);
+  g.strokeStyle = '#cfc8b8';                                  
+  g.lineWidth = 2;
+  for (let y = 0; y <= tam; y += tam / 16) {
+    g.beginPath(); g.moveTo(0, y); g.lineTo(tam, y); g.stroke();
+  }
+  g.strokeStyle = '#8f8a7d';                                  
+  g.lineWidth = 3;
+  g.strokeRect(1.5, 1.5, tam - 3, tam - 3);
+  return c.toDataURL('image/png');
+}
+
+function gerarImagemEstrelas(largura = 2048, altura = 1024) {
+  const c = document.createElement('canvas');
+  c.width = largura;
+  c.height = altura;
+  const g = c.getContext('2d');
+  g.fillStyle = '#02030a';
+  g.fillRect(0, 0, largura, altura);
+
+  const nebulosas = [                                         
+    { x: largura * 0.25, y: altura * 0.40, r: 380, cor: '60,80,200' },
+    { x: largura * 0.75, y: altura * 0.65, r: 320, cor: '140,60,170' }
+  ];
+  for (const n of nebulosas) {
+    const rg = g.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+    rg.addColorStop(0, `rgba(${n.cor},0.22)`);
+    rg.addColorStop(1, `rgba(${n.cor},0)`);
+    g.fillStyle = rg;
+    g.fillRect(0, 0, largura, altura);
+  }
+
+  const tons = ['255,255,255', '190,210,255', '255,235,200'];
+  for (let i = 0; i < 3000; i++) {                            
+    const raio = 0.4 + Math.random() * 1.2;
+    g.fillStyle = `rgba(${tons[i % 3]},${0.4 + Math.random() * 0.6})`;
+    g.beginPath();
+    g.arc(Math.random() * largura, Math.random() * altura, raio, 0, Math.PI * 2);
+    g.fill();
+  }
+  return c.toDataURL('image/png');
+}
+
+const URL_CASCO    = gerarImagemCasco();
+const URL_SOLAR    = gerarImagemPainelSolar();
+const URL_RADIADOR = gerarImagemRadiador();
+const URL_ESTRELAS = gerarImagemEstrelas();
+
+const carregadorTexturas = new THREE.TextureLoader();
+
+function carregarTextura(url, repX = 1, repY = 1) {
+  const textura = carregadorTexturas.load(url);
+  textura.colorSpace = THREE.SRGBColorSpace;
+  textura.wrapS = THREE.RepeatWrapping;   
+  textura.wrapT = THREE.RepeatWrapping;   
+  textura.repeat.set(repX, repY);
+  textura.anisotropy = renderer.capabilities.getMaxAnisotropy();   
+  return textura;
+}
+
+const texCascoModulos  = carregarTextura(URL_CASCO, 9, 5);     
+const texCascoTrelica  = carregarTextura(URL_CASCO, 4, 1.5);   
+const texSolarISS      = carregarTextura(URL_SOLAR, 5, 4);     
+const texRadiador      = carregarTextura(URL_RADIADOR, 1, 3);  
+const texCascoSatelite = carregarTextura(URL_CASCO, 1, 1);
+const texSolarSatelite = carregarTextura(URL_SOLAR, 2, 1);
+const texEstrelas      = carregarTextura(URL_ESTRELAS, 1, 1); 
+
+// ---- Fundo estelar e Terra agrupados num "Universo" ----
+const universo = new THREE.Group();
+scene.add(universo);
+
+const matCeu = new THREE.MeshBasicMaterial({
+  map: texEstrelas,
+  side: THREE.BackSide,    
+  depthWrite: false        
+});
+universo.add(new THREE.Mesh(new THREE.SphereGeometry(3000, 64, 32), matCeu));
+
+// ---- Terra ----
+const terra = new THREE.Mesh(
+  new THREE.SphereGeometry(500, 64, 48),
+  new THREE.MeshStandardMaterial({ color: 0x1e4f9c, roughness: 0.85, emissive: 0x020c1f })
+);
+terra.position.set(0, -650, -200);
+universo.add(terra);
+
+
+/* ==================================================================
+ * 4. OBJETOS 3D E COMPOSIÇÃO (ISS)
+ * ================================================================== */
+const AGENCIAS = {
+  NASA:      { nome: 'NASA (EUA)',         cor: 0x4da3ff },
+  ROSCOSMOS: { nome: 'Roscosmos (Rússia)', cor: 0xff5a5a },
+  ESA:       { nome: 'ESA (Europa)',       cor: 0x3ddcc4 },
+  JAXA:      { nome: 'JAXA (Japão)',       cor: 0x7ee081 },
+  CSA:       { nome: 'CSA (Canadá)',       cor: 0xffc94d },
+  COMERCIAL: { nome: 'Parceiros Comerciais', cor: 0xd48fff }
+};
+const corCSS = (hex) => '#' + hex.toString(16).padStart(6, '0');   
+
+const modulosSelecionaveis = [];
+
+function criarMaterialCasco(textura, tinta = 0xffffff) {
+  return new THREE.MeshStandardMaterial({
+    map: textura, color: tinta, metalness: 0.35, roughness: 0.5    
+  });
+}
+function criarMaterialSolar(textura) {
+  return new THREE.MeshStandardMaterial({
+    map: textura, metalness: 0.2, roughness: 0.35, side: THREE.DoubleSide          
+  });
+}
+function criarMaterialRadiador(textura) {
+  return new THREE.MeshStandardMaterial({
+    map: textura, metalness: 0.1, roughness: 0.6, side: THREE.DoubleSide
+  });
+}
+
+function criarModulo(geometria, material, nome, agencia, descricao) {
+  const malha = new THREE.Mesh(geometria, material);
+  malha.name = nome;
+  malha.userData.agencia = agencia;                     
+  malha.userData.descricao = descricao;
+  malha.userData.corOriginal = material.color.clone();  
+  malha.userData.grupoDestaque = [malha];               
+  modulosSelecionaveis.push(malha);
+  return malha;
+}
+
+const MEIO_PI = Math.PI / 2;
+
+function criarCilindro({ nome, agencia, descricao, raio, comprimento, eixo, pos, tinta }) {
+  const malha = criarModulo(
+    new THREE.CylinderGeometry(raio, raio, comprimento, 32),  
+    criarMaterialCasco(texCascoModulos, tinta),
+    nome, agencia, descricao
+  );
+  if (eixo === 'z') malha.rotation.x = MEIO_PI;
+  if (eixo === 'x') malha.rotation.z = MEIO_PI;
+  malha.position.set(pos[0], pos[1], pos[2]);
+  return malha;
+}
+
+const iss = new THREE.Group();
+iss.name = 'ISS';
+iss.scale.set(0.7, 0.7, 0.7);                    
+iss.rotation.x = THREE.MathUtils.degToRad(15);   
+scene.add(iss);
+
+const modulos = new THREE.Group();
+const trelica = new THREE.Group();
+iss.add(modulos, trelica);
+trelica.position.set(0, 2.6, 0);                 
+
+// Módulos
+modulos.add(
+  criarCilindro({ nome: 'Zvezda (Módulo de Serviço)', agencia: 'ROSCOSMOS', descricao: 'Suporte de vida e propulsão.', raio: 0.9, comprimento: 4, eixo: 'z', pos: [0, 0, -11.8] }),
+  criarCilindro({ nome: 'Zarya (FGB)', agencia: 'ROSCOSMOS', descricao: 'Energia e armazenamento inicial.', raio: 1.05, comprimento: 5, eixo: 'z', pos: [0, 0, -7.5], tinta: 0xe6d3a0 }),
+  criarCilindro({ nome: 'Nauka (MLM)', agencia: 'ROSCOSMOS', descricao: 'Laboratório multiuso russo.', raio: 1.15, comprimento: 4.2, eixo: 'y', pos: [0, -2.8, -11.8] }),
+  criarCilindro({ nome: 'Poisk (MRM-2)', agencia: 'ROSCOSMOS', descricao: 'Câmara de descompressão.', raio: 0.6, comprimento: 2.4, eixo: 'y', pos: [0, 1.9, -11.8] }),
+  criarCilindro({ nome: 'Rassvet (MRM-1)', agencia: 'ROSCOSMOS', descricao: 'Módulo de pesquisa.', raio: 0.65, comprimento: 2, eixo: 'y', pos: [0, -1.85, -7.5] }),
+  criarCilindro({ nome: 'Unity (Node 1)', agencia: 'NASA', descricao: 'Conecta os segmentos russo e americano.', raio: 1.0, comprimento: 2.4, eixo: 'z', pos: [0, 0, -4] }),
+  criarCilindro({ nome: 'Destiny (Laboratório)', agencia: 'NASA', descricao: 'Laboratório de pesquisa dos EUA.', raio: 1.2, comprimento: 6, eixo: 'z', pos: [0, 0, 0] }),
+  criarCilindro({ nome: 'Tranquility (Node 3)', agencia: 'NASA', descricao: 'Nó com suporte de vida.', raio: 0.95, comprimento: 3, eixo: 'x', pos: [-2.3, 0, -4] }),
+  criarCilindro({ nome: 'Quest (Airlock)', agencia: 'NASA', descricao: 'Câmara usada para saídas ao espaço.', raio: 0.7, comprimento: 2.6, eixo: 'x', pos: [2.1, 0, -4] }),
+  criarCilindro({ nome: 'Leonardo (PMM)', agencia: 'NASA', descricao: 'Módulo de armazenamento.', raio: 0.85, comprimento: 3, eixo: 'y', pos: [0, -2.3, -4] }),
+  criarCilindro({ nome: 'Nanoracks Bishop Airlock', agencia: 'COMERCIAL', descricao: 'Câmara comercial para satélites.', raio: 0.55, comprimento: 1.2, eixo: 'x', pos: [-4.4, 0, -4] }),
+  criarCilindro({ nome: 'Harmony (Node 2)', agencia: 'NASA', descricao: 'Nó de conexão aos laboratórios europeu e japonês.', raio: 1.0, comprimento: 2.6, eixo: 'z', pos: [0, 0, 4.1] }),
+  criarCilindro({ nome: 'Columbus (Laboratório)', agencia: 'ESA', descricao: 'Laboratório europeu de ciências.', raio: 0.9, comprimento: 3.5, eixo: 'x', pos: [2.55, 0, 4.1] }),
+  criarCilindro({ nome: 'Kibo (Módulo Pressurizado)', agencia: 'JAXA', descricao: 'Laboratório construído pelo Japão.', raio: 1.0, comprimento: 4.2, eixo: 'x', pos: [-2.9, 0, 4.1] }),
+  criarCilindro({ nome: 'Kibo (ELM-PS)', agencia: 'JAXA', descricao: 'Módulo logístico do Kibo.', raio: 0.8, comprimento: 2.2, eixo: 'y', pos: [-2.9, -1.9, 4.1] }),
+  criarCilindro({ nome: 'IDA-2 (Adaptador)', agencia: 'NASA', descricao: 'Permite acoplamento de naves comerciais.', raio: 0.75, comprimento: 0.4, eixo: 'z', pos: [0, 0, 6.8] })
+);
+
+const bocal = criarModulo(new THREE.ConeGeometry(0.9, 0.8, 32), criarMaterialCasco(texCascoModulos), 'Propulsores do Zvezda', 'ROSCOSMOS', 'Propulsão da estação.');
+bocal.rotation.x = -MEIO_PI; bocal.position.set(0, 0, -14.2);
+modulos.add(bocal);
+
+const cupola = criarModulo(new THREE.SphereGeometry(0.65, 24, 16), criarMaterialCasco(texCascoModulos), 'Cupola', 'ESA', 'Cúpula para observar a Terra.');
+cupola.position.set(-2.3, -1.4, -4);   
+modulos.add(cupola);
+
+const kiboEF = criarModulo(new THREE.BoxGeometry(2.4, 0.8, 1.6), criarMaterialCasco(texCascoModulos), 'Kibo (Plataforma Exposta)', 'JAXA', 'Experimentos expostos ao vácuo.');
+kiboEF.position.set(-6.0, 0, 4.1);
+modulos.add(kiboEF);
+
+const bartolomeo = criarModulo(new THREE.BoxGeometry(1.6, 0.6, 1.0), criarMaterialCasco(texCascoModulos), 'Plataforma Bartolomeo', 'ESA', 'Plataforma para cargas comerciais.');
+bartolomeo.position.set(2.55, -1.1, 4.1);
+modulos.add(bartolomeo);
+
+const pma = criarModulo(new THREE.ConeGeometry(0.7, 1.2, 24), criarMaterialCasco(texCascoModulos), 'Porto de Acoplamento (PMA)', 'NASA', 'Adaptador para naves.');
+pma.rotation.x = MEIO_PI; pma.position.set(0, 0, 6.0);
+modulos.add(pma);
+
+// Treliça
+const SEGMENTOS = [
+  { nome: '1', x0: 2.5,  x1: 6.5  }, { nome: '3', x0: 6.5,  x1: 10   },
+  { nome: '4', x0: 11,   x1: 14   }, { nome: '5', x0: 14,   x1: 15.5 }, { nome: '6', x0: 15.5, x1: 18   }    
+];
+
+function criarSegmentoTrelica(nome, xCentro, comprimento) {
+  const seg = criarModulo(new THREE.BoxGeometry(comprimento, 0.8, 0.8), criarMaterialCasco(texCascoTrelica), nome, 'NASA', 'Estrutura que suporta painéis e radiadores.');
+  seg.position.set(xCentro, 0, 0); trelica.add(seg); return seg;
+}
+
+criarSegmentoTrelica('Treliça S0 (central)', 0, 5);
+
+const suporte = criarModulo(new THREE.BoxGeometry(0.8, 1.4, 0.8), criarMaterialCasco(texCascoModulos), 'Suporte do S0', 'NASA', 'Junta estrutural.');
+suporte.position.set(0, -0.9, 0); trelica.add(suporte);
+
+const pivosAsas = [];
+
+function criarParDeAsas(xPivo, nomeSegmento, fase) {
+  const pivo = new THREE.Group();
+  pivo.position.set(xPivo, 0, 0); pivo.userData.fase = fase;
+  pivo.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 26), criarMaterialCasco(texCascoTrelica)));
+
+  for (const sinalZ of [+1, -1]) {
+    const cobertores = [];
+    for (const posX of [-0.95, +0.95]) {
+      const cobertor = criarModulo(new THREE.BoxGeometry(1.7, 0.06, 11), criarMaterialSolar(texSolarISS), `Asa solar ${nomeSegmento}`, 'NASA', 'Converte luz em eletricidade.');
+      cobertor.position.set(posX, 0, sinalZ * 6.8);          
+      pivo.add(cobertor); cobertores.push(cobertor);
+    }
+    for (const c of cobertores) c.userData.grupoDestaque = cobertores;   
+  }
+  trelica.add(pivo); pivosAsas.push(pivo);
+}
+
+for (const lado of [+1, -1]) {
+  const L = lado > 0 ? 'S' : 'P';   
+  for (const s of SEGMENTOS) criarSegmentoTrelica(`Treliça ${L}${s.nome}`, lado * (s.x0 + s.x1) / 2, s.x1 - s.x0);
+
+  const sarj = criarModulo(new THREE.CylinderGeometry(1.1, 1.1, 1, 32), criarMaterialCasco(texCascoModulos), `Junta rotativa solar (${L}ARJ)`, 'NASA', 'Gira as asas solares.');
+  sarj.rotation.z = MEIO_PI; sarj.position.set(lado * 10.5, 0, 0); trelica.add(sarj);
+
+  for (const [nomeSeg, xCentro] of [['1', 4.5], ['3', 8.25]]) {
+    const radiador = criarModulo(new THREE.BoxGeometry(3.2, 0.08, 5.5), criarMaterialRadiador(texRadiador), `Radiador ${L}${nomeSeg}`, 'NASA', 'Dissipa calor para o espaço.');
+    radiador.position.set(lado * xCentro, 0, 3.4); trelica.add(radiador);
+  }
+  criarParDeAsas(lado * 12.5,  `${L}4`, lado > 0 ? 0 : Math.PI);
+  criarParDeAsas(lado * 16.75, `${L}6`, lado > 0 ? 1.0 : Math.PI + 1.0);
+}
+
+const haste = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.2, 12), criarMaterialCasco(texCascoModulos));
+haste.position.set(-1.5, 1.0, 0); trelica.add(haste);
+
+const antena = criarModulo(new THREE.ConeGeometry(0.9, 0.6, 32), criarMaterialCasco(texCascoModulos), 'Antena de Comunicações', 'NASA', 'Ligação aos satélites.');
+antena.rotation.z = Math.PI; antena.scale.set(1, 0.6, 1); antena.position.set(-1.5, 1.9, 0); trelica.add(antena);
+
+// Canadarm2
+const materialBraco = () => criarMaterialCasco(texCascoModulos);
+const baseBraco = criarModulo(new THREE.BoxGeometry(1.0, 0.4, 1.0), materialBraco(), 'Canadarm2 (base móvel)', 'CSA', 'Desliza ao longo da treliça.');
+baseBraco.position.set(1.6, 0.6, 0); trelica.add(baseBraco);
+
+const ombro = new THREE.Group();                 
+ombro.position.set(1.6, 0.8, 0); trelica.add(ombro);
+ombro.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), materialBraco()));
+
+const segmento1 = new THREE.Group();             
+ombro.add(segmento1);
+const braco1 = criarModulo(new THREE.CylinderGeometry(0.16, 0.16, 3.6, 16), materialBraco(), 'Canadarm2 (braço)', 'CSA', 'Braço robótico de 17 m.');
+braco1.position.set(0, 1.8, 0); segmento1.add(braco1);
+
+const cotovelo = new THREE.Group();              
+cotovelo.position.set(0, 3.6, 0); segmento1.add(cotovelo);
+cotovelo.add(new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), materialBraco()));
+
+const braco2 = criarModulo(new THREE.CylinderGeometry(0.16, 0.16, 3.4, 16), materialBraco(), 'Canadarm2 (braço)', 'CSA', 'Braço robótico de 17 m.');
+braco2.position.set(0, 1.7, 0); cotovelo.add(braco2);
+
+const mao = criarModulo(new THREE.ConeGeometry(0.22, 0.6, 12), materialBraco(), 'Canadarm2 (garra)', 'CSA', 'Efetuador que agarra cargas.');
+mao.position.set(0, 3.7, 0); cotovelo.add(mao);
+
+const partesBraco = [braco1, braco2, mao];       
+for (const p of partesBraco) p.userData.grupoDestaque = partesBraco;
+
+
+/* ==================================================================
+ * 5. OBJETO CONTROLÁVEL SECUNDÁRIO (Satélite Pilotável)
+ * ================================================================== */
+const satelite = new THREE.Group();
+satelite.name = 'Satélite';
+satelite.scale.set(4, 4, 4);
+
+const corpoSatelite = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.6), criarMaterialCasco(texCascoSatelite));
+satelite.add(corpoSatelite);
+
+const narizSatelite = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 20), criarMaterialCasco(texCascoSatelite));
+narizSatelite.rotation.x = MEIO_PI; narizSatelite.position.set(0, 0, 1.25);              
+satelite.add(narizSatelite);
+
+for (const lado of [+1, -1]) {                       
+  const asa = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.06, 1.0), criarMaterialSolar(texSolarSatelite));
+  asa.position.set(lado * 1.95, 0, 0); satelite.add(asa);
+}
+
+const hasteSat = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8), criarMaterialCasco(texCascoSatelite));
+hasteSat.position.set(0, 1.0, 0); satelite.add(hasteSat);
+
+const pontaSat = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), criarMaterialCasco(texCascoSatelite));
+pontaSat.position.set(0, 1.45, 0); satelite.add(pontaSat);
+
+const chama = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.9, 16), new THREE.MeshBasicMaterial({ color: 0xff8a2b }));
+chama.rotation.x = -MEIO_PI; chama.position.set(0, 0, -1.25); chama.visible = false;
+satelite.add(chama);
+
+const posicaoBaseSatelite = new THREE.Vector3(15, 20, 80);
+satelite.position.copy(posicaoBaseSatelite);
+scene.add(satelite);
+
+
+/* ==================================================================
+ * 6. SISTEMA DE TROCA DE CÂMERA E TECLADO (WASD / C)
+ * ================================================================== */
+const teclas = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+let alvoCamera = 'satelite'; // Estado atual da câmera ('satelite' ou 'iss')
+const elAlvo = document.getElementById('camera-alvo');
+
+window.addEventListener('keydown', (evento) => {
+  if (evento.code in teclas) teclas[evento.code] = true;
+  
+  // Troca de Câmera ao apertar "C"
+  if (evento.code === 'KeyC') {
+    alvoCamera = (alvoCamera === 'satelite') ? 'iss' : 'satelite';
+    elAlvo.textContent = (alvoCamera === 'satelite') ? 'Satélite' : 'ISS';
+  }
+});
+window.addEventListener('keyup', (evento) => {
+  if (evento.code in teclas) teclas[evento.code] = false;
+});
+window.addEventListener('blur', () => {
+  for (const k in teclas) teclas[k] = false;
+});
+
+const frenteCamara  = new THREE.Vector3();
+const direitaCamara = new THREE.Vector3();
+const direcaoMov    = new THREE.Vector3();
+const VELOCIDADE_SATELITE = 25; 
+const LIMITE_MUNDO = 150;       
+
+function atualizarSatelite(delta, elapsed) {
+  camera.getWorldDirection(frenteCamara);   
+  frenteCamara.y = 0; frenteCamara.normalize();                 
+  direitaCamara.crossVectors(frenteCamara, camera.up).normalize();
+
+  direcaoMov.set(0, 0, 0);
+  if (teclas.KeyW) direcaoMov.add(frenteCamara);
+  if (teclas.KeyS) direcaoMov.sub(frenteCamara);
+  if (teclas.KeyD) direcaoMov.add(direitaCamara);
+  if (teclas.KeyA) direcaoMov.sub(direitaCamara);
+
+  const emMovimento = direcaoMov.lengthSq() > 0;   
+  chama.visible = emMovimento;
+
+  if (emMovimento) {
+    direcaoMov.normalize();
+    posicaoBaseSatelite.addScaledVector(direcaoMov, VELOCIDADE_SATELITE * delta);
+    posicaoBaseSatelite.x = THREE.MathUtils.clamp(posicaoBaseSatelite.x, -LIMITE_MUNDO, LIMITE_MUNDO);
+    posicaoBaseSatelite.z = THREE.MathUtils.clamp(posicaoBaseSatelite.z, -LIMITE_MUNDO, LIMITE_MUNDO);
+
+    const anguloAlvo = Math.atan2(direcaoMov.x, direcaoMov.z);
+    let dif = anguloAlvo - satelite.rotation.y;
+    dif = Math.atan2(Math.sin(dif), Math.cos(dif));        
+    satelite.rotation.y += dif * Math.min(1, 8 * delta);   
+  }
+
+  satelite.position.set(
+    posicaoBaseSatelite.x,
+    posicaoBaseSatelite.y + Math.sin(elapsed * 1.5) * 0.4,
+    posicaoBaseSatelite.z
+  );
+  satelite.rotation.z = Math.sin(elapsed * 1.1) * 0.08;    
+}
+
+
+/* ==================================================================
+ * 7. ANIMAÇÕES (render loop)
+ * ================================================================== */
+const relogio = new THREE.Clock();
+const VELOCIDADE_ROTACAO_ISS = 0.12;   
+const centroISS = new THREE.Vector3(0, 0, 0);
+
+function animar() {
+  const delta = Math.min(relogio.getDelta(), 0.1);   
+  const elapsed = relogio.elapsedTime;               
+
+  iss.rotation.y = elapsed * VELOCIDADE_ROTACAO_ISS;
+  universo.rotation.x = elapsed * 0.02;
+
+  for (const pivo of pivosAsas) {
+    pivo.rotation.z = Math.sin(elapsed * 0.8 + pivo.userData.fase) * 0.45;
+  }
+
+  segmento1.rotation.z = 0.5  + Math.sin(elapsed * 0.5) * 0.25;         
+  cotovelo.rotation.z  = -1.2 + Math.sin(elapsed * 0.7 + 1.0) * 0.4;    
+
+  atualizarSatelite(delta, elapsed);
+
+  // ---- SUAVIZAÇÃO DA CÂMERA ----
+  // A função lerp move a câmera suavemente entre o satélite e a ISS
+  const vetorDestino = (alvoCamera === 'satelite') ? satelite.position : centroISS;
+  controls.target.lerp(vetorDestino, 0.05);
+
+  atualizarDestaque(elapsed);
+
+  controls.update();                 
+  renderer.render(scene, camera);    
+}
+
+
+/* ==================================================================
+ * 8. INTERAÇÃO COM O MOUSE (Raycaster + seleção)
+ * ================================================================== */
+const raycaster = new THREE.Raycaster();   
+const rato = new THREE.Vector2();          
+
+const elNome    = document.getElementById('modulo-selecionado');
+const elAgencia = document.getElementById('modulo-agencia');
+const elDesc    = document.getElementById('modulo-descricao');
+const elLegenda = document.getElementById('legenda');
+
+for (const chave in AGENCIAS) {
+  const li = document.createElement('li');
+  const ponto = document.createElement('span');
+  ponto.style.cssText = `display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;background:${corCSS(AGENCIAS[chave].cor)}`;
+  li.append(ponto, AGENCIAS[chave].nome);
+  elLegenda.appendChild(li);
+}
+
+const DURACAO_DESTAQUE = 2;        
+let malhasDestacadas = [];
+let fimDestaque = 0;
+
+function destacar(malha) {
+  restaurarDestaque();                                          
+  const cor = new THREE.Color(AGENCIAS[malha.userData.agencia].cor);   
+  malhasDestacadas = malha.userData.grupoDestaque;              
+  for (const m of malhasDestacadas) {
+    m.material.color.copy(cor);         
+    m.material.emissive.copy(cor);      
+    m.material.emissiveIntensity = 0.6;
+  }
+  fimDestaque = relogio.elapsedTime + DURACAO_DESTAQUE;         
+}
+function restaurarDestaque() {
+  for (const m of malhasDestacadas) {
+    m.material.color.copy(m.userData.corOriginal);
+    m.material.emissive.set(0x000000);
+  }
+  malhasDestacadas = [];
+}
+function atualizarDestaque(elapsed) {                           
+  if (malhasDestacadas.length > 0 && elapsed > fimDestaque) restaurarDestaque();
+}
+
+let rato0 = { x: 0, y: 0 };
+renderer.domElement.addEventListener('pointerdown', (e) => { rato0 = { x: e.clientX, y: e.clientY }; });
+
+renderer.domElement.addEventListener('click', (evento) => {
+  if (Math.hypot(evento.clientX - rato0.x, evento.clientY - rato0.y) > 5) return;   
+
+  const caixa = renderer.domElement.getBoundingClientRect();
+  rato.x =  ((evento.clientX - caixa.left) / caixa.width)  * 2 - 1;
+  rato.y = -((evento.clientY - caixa.top)  / caixa.height) * 2 + 1;
+
+  raycaster.setFromCamera(rato, camera);
+  const intersecoes = raycaster.intersectObjects(modulosSelecionaveis, false);
+
+  if (intersecoes.length > 0) {
+    const malha = intersecoes[0].object;               
+    destacar(malha);                                   
+    const ag = AGENCIAS[malha.userData.agencia];
+    elNome.textContent = malha.name;                   
+    elAgencia.textContent = ag.nome;                   
+    elAgencia.style.color = corCSS(ag.cor);
+    elDesc.textContent = malha.userData.descricao;     
+  } else {
+    restaurarDestaque();                               
+    elNome.textContent = 'nenhum';
+    elAgencia.textContent = '';
+    elDesc.textContent = '';
+  }
+});
+
+
+/* ==================================================================
+ * 9. RESPONSIVIDADE
+ * ================================================================== */
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;   
+  camera.updateProjectionMatrix();                          
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);  
+});
+
+
+/* ==================================================================
+ * 10. INICIALIZAÇÃO
+ * ================================================================== */
+renderer.setAnimationLoop(animar);
+
+  </script>
 </body>
-
 </html>
